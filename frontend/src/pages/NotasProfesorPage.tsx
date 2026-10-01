@@ -1,0 +1,19 @@
+import { useEffect, useState } from "react";
+import { generarEvaluacionesProfesor, getMisCursadasProfesor, getPlanillaProfesor, guardarCalificacionesProfesor } from "../services/portalProfesorService";
+import type { MiCursadaProfesor } from "../types/PortalProfesor";
+import type { PlanillaCalificaciones } from "../types/Calificaciones";
+
+const estado=(value:string)=>({PROMOCIONA:"Promociona",REGULAR:"Regular",NO_REGULARIZA:"No regulariza",BLOQUEADO_CUOTA:"Bloqueado por cuota",EN_CURSO:"En curso"}[value]??value);
+
+export default function NotasProfesorPage(){
+ const [cursadas,setCursadas]=useState<MiCursadaProfesor[]>([]),[cursadaId,setCursadaId]=useState(""),[planilla,setPlanilla]=useState<PlanillaCalificaciones|null>(null),[error,setError]=useState(""),[saving,setSaving]=useState(false);
+ useEffect(()=>{getMisCursadasProfesor().then(setCursadas).catch(e=>setError(e instanceof Error?e.message:"Error"))},[]);
+ async function load(id:string){setCursadaId(id);setPlanilla(null);if(!id)return;try{setError("");setPlanilla(await getPlanillaProfesor(id))}catch(e){setError(e instanceof Error?e.message:"Error")}}
+ function setNota(fila:number,evaluacion:number,value:string){if(!planilla)return;const copia=structuredClone(planilla);copia.alumnos[fila].notas[evaluacion].nota=value===""?null:Number(value);setPlanilla(copia)}
+ async function generar(){if(!cursadaId)return;try{setError("");setPlanilla(await generarEvaluacionesProfesor(cursadaId))}catch(e){setError(e instanceof Error?e.message:"Error")}}
+ async function guardar(){if(!planilla)return;try{setSaving(true);setError("");const notas=planilla.alumnos.flatMap(a=>a.cuotaAlDia?a.notas.map(n=>({matriculaId:a.matriculaId,evaluacionId:n.evaluacionId,nota:n.nota??null,observacion:n.observacion??null})):[]);setPlanilla(await guardarCalificacionesProfesor({cursadaId:planilla.cursadaId,notas}))}catch(e){setError(e instanceof Error?e.message:"Error")}finally{setSaving(false)}}
+ return <div><div className="page-header"><h1>Cargar notas</h1><p>Planilla de alumnos de tus materias asignadas.</p></div>{error&&<div className="alert-error">{error}</div>}
+ <div className="card"><div className="form-group"><label>Materia</label><select value={cursadaId} onChange={e=>load(e.target.value)}><option value="">Seleccionar...</option>{cursadas.map(c=><option key={c.id} value={c.id}>{c.materiaNombre} · {c.cicloLectivo} · {c.periodo}</option>)}</select></div></div>
+ {planilla&&<section className="card"><div className="grade-header"><div><h2>{planilla.cursadaNombre}</h2><p>{planilla.evaluaciones.length} evaluaciones</p></div><button className="btn btn-secondary" onClick={generar}>Generar evaluaciones</button></div>{planilla.alumnos.length===0?<p>No hay alumnos inscriptos.</p>:<div className="table-container"><table><thead><tr><th>Alumno</th><th>Contacto</th><th>Cuota</th>{planilla.evaluaciones.map(e=><th key={e.id}>{e.nombre}</th>)}<th>Promedio</th><th>Condición</th></tr></thead><tbody>{planilla.alumnos.map((a,mi)=><tr key={a.matriculaId}><td>{a.alumnoNombre}<small className="table-sub">DNI {a.alumnoDni}</small></td><td>{a.alumnoEmail??"-"}<small className="table-sub">{a.alumnoTelefono??""}</small></td><td>{a.cuotaAlDia?"Al día":"Con deuda"}</td>{a.notas.map((n,ei)=><td key={n.evaluacionId}><input className="grade-input" type="number" min="0" max="10" step="0.01" disabled={!a.cuotaAlDia} value={n.nota??""} onChange={e=>setNota(mi,ei,e.target.value)}/></td>)}<td>{a.promedio??"-"}</td><td>{estado(a.condicion)}</td></tr>)}</tbody></table></div>}<div className="form-actions"><button className="btn btn-primary" disabled={saving||planilla.evaluaciones.length===0} onClick={guardar}>{saving?"Guardando...":"Guardar calificaciones"}</button></div></section>}
+ </div>;
+}
